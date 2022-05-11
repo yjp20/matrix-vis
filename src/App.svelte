@@ -669,6 +669,7 @@
 	}
 
 	input[type="number"] {
+		font: inherit;
 		-moz-appearance: textfield;
 		appearance: none;
 		width: 4ch;
@@ -695,6 +696,7 @@
 	}
 
 	.marks {
+		font-family: "Garamond", serif;
 		display: flex;
 		margin-bottom: 1em;
 	}
