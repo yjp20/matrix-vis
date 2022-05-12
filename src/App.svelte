@@ -406,6 +406,7 @@
 <div class="matrix-vis">
 	<div class="options">
 		<div class="block">
+			<div class="label">OPTIONS</div>
 			<div class="eq">
 				<div class="eq-var">A =</div>
 				<div class="matrix">
@@ -536,6 +537,7 @@
 
 	<div class="animation-options">
 		<div class="block">
+			<div class="label">ANIMATION</div>
 			<div class="slidecontainer">
 				<input
 					type="range"
@@ -550,18 +552,18 @@
 			</div>
 			<div class="marks">
 				{#if options.decomp == "EIGEN"}
-					<div class="mark">V<sup>-1</sup></div>
-					<div class="mark">L</div>
 					<div class="mark">V</div>
+					<div class="mark">Λ</div>
+					<div class="mark">V<sup>-1</sup></div>
 				{/if}
 				{#if options.decomp == "EIGEN_AXIS"}
 					<div class="mark">V<sub>1</sub></div>
 					<div class="mark">V<sub>2</sub></div>
 				{/if}
 				{#if options.decomp == "SINGULAR"}
-					<div class="mark">V<sup>T</sup></div>
-					<div class="mark">S</div>
 					<div class="mark">U</div>
+					<div class="mark">S</div>
+					<div class="mark">V<sup>T</sup></div>
 				{/if}
 			</div>
 			<select bind:value={options.decomp}>
@@ -587,6 +589,12 @@
 		display: flex;
 	}
 
+	.label {
+		font-weight: bold;
+		font-size: 0.75em;
+		margin-bottom: 8px;
+	}
+
 	.matrix {
 		position: relative;
 		padding: 0.5em;
@@ -597,7 +605,7 @@
 		box-sizing: border-box;
 		left: 0;
 		top: 0;
-		height: calc(100% - 5px);
+		height: calc(100%);
 		width: 10px;
 		content: " ";
 		border-left: 2px solid currentColor;
@@ -682,6 +690,7 @@
 	}
 
 	input[type="range"] {
+		direction: rtl;
 		width: 100%;
 	}
 
