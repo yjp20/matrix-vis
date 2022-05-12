@@ -580,6 +580,7 @@
 	:global(body) {
 		background-color: black;
 		padding: 0;
+		margin: 0;
 	}
 
 	.matrix-vis {
