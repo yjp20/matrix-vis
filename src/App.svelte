@@ -114,7 +114,8 @@
 		ctx.closePath()
 	}
 
-	function drawPoint([x, y], radius) {
+	function drawPoint([x, y], radius, color = "white") {
+		ctx.fillStyle = color
 		ctx.beginPath()
 		ctx.arc(
 			x * spacing + width / 2,
@@ -129,13 +130,11 @@
 
 	function drawPointTransform(A, [x, y], color = "white") {
 		const [xt, yt] = transform(A, [x, y])
-		ctx.fillStyle = color
-		drawPoint([xt, yt], 5)
+		drawPoint([xt, yt], 5, color)
 	}
 
 	function drawEig(evalues, evectors) {
-		ctx.beginPath()
-		ctx.setLineDash([10, 10])
+		ctx.setLineDash([10, 3])
 		drawLine(
 			(-width / spacing) * evectors[0][0],
 			(-width / spacing) * evectors[0][1],
@@ -152,9 +151,11 @@
 			"turquoise",
 			2
 		)
-		ctx.stroke()
-		ctx.closePath()
+		drawPoint(evectors[0], 3, "turquoise")
+		drawPoint(evectors[1], 3, "turquoise")
 		ctx.setLineDash([])
+		drawPoint(scale(evectors[0], evalues[0]), 5, "turquoise")
+		drawPoint(scale(evectors[1], evalues[1]), 5, "turquoise")
 	}
 
 	function moveTo(x, y) {
@@ -213,6 +214,10 @@
 				[0, 1],
 			]
 		)
+	}
+
+	function scale(v, s) {
+		return v.map((x) => x * s)
 	}
 
 	function transform(A, [x, y]) {
