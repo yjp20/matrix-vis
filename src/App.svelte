@@ -1,12 +1,29 @@
 <script>
 	import { onMount } from "svelte"
+	import Matrix from "./Matrix.svelte"
+	import {
+		clamp,
+		ease,
+		reduce,
+		scale,
+		transform,
+		eigen,
+		transpose,
+		round,
+		dist,
+		eigenDecomposition,
+		eigenAxisDecomposition,
+		singularValueDecomposition,
+		upperTriangularDecomposition,
+		interpolateAngle,
+		interpolateEigen,
+	} from "./linalg.js"
 
-	const A = [
+	let A = [
 		[1, 0.4],
 		[0.3, 1],
 	]
-
-	const V = [1, 0]
+	let V = [1, 0]
 
 	let select = null
 	let time = 1
@@ -18,18 +35,21 @@
 	let options = {
 		eigen: false,
 		draw: false,
+		transpose: false,
 		decomp: undefined,
 	}
 
 	function frame() {
 		const [evalues, evectors] = eigen(A)
-		console.log(options.decomp)
 		let decomp = [A],
 			interpolate = interpolateAngle,
 			square = undefined
 		if (options.decomp == "EIGEN") {
 			decomp = eigenDecomposition(A)
 			square = evectors
+		}
+		if (options.decomp == "UPPER") {
+			decomp = upperTriangularDecomposition(A)
 		}
 		if (options.decomp == "EIGEN_AXIS") {
 			decomp = eigenAxisDecomposition(A)
@@ -61,7 +81,8 @@
 		drawBasis(A)
 		if (square !== undefined) drawSquare(A, square)
 		if (options.eigen) drawEig(evalues, evectors)
-		if (options.draw) drawArrow(A, V)
+		if (options.transpose) drawTransformGrid(transpose(A), "red")
+		if (options.draw) drawArrowPair(A, V)
 	}
 
 	function drawGrid() {
@@ -73,8 +94,8 @@
 			const nx = Math.ceil(width / spacing)
 			const lineColor = "#333"
 			const lineWidth = i == 0 ? "2" : "1"
-			drawLine(-nx, i, nx, i, lineColor, lineWidth)
-			drawLine(i, -nx, i, nx, lineColor, lineWidth)
+			drawLine([-nx, i], [nx, i], lineColor, lineWidth)
+			drawLine([i, -nx], [i, nx], lineColor, lineWidth)
 		}
 	}
 
@@ -83,14 +104,14 @@
 		drawPointTransform(A, [1, 0])
 	}
 
-	function drawTransformGrid(A) {
+	function drawTransformGrid(A, color = "#09d") {
 		for (
 			let i = Math.floor(-width / spacing);
 			i <= Math.ceil(width / spacing);
 			i++
 		) {
 			const nx = Math.ceil(width / spacing)
-			const lineColor = i == 0 ? "#fff" : "#09d"
+			const lineColor = i == 0 ? "#fff" : color
 			const lineWidth = i == 0 ? "2" : "1"
 			drawLineTransform(A, [-nx, i], [nx, i], lineColor, lineWidth)
 			drawLineTransform(A, [i, -nx], [i, nx], lineColor, lineWidth)
@@ -100,10 +121,34 @@
 	function drawLineTransform(A, [x0, y0], [x1, y1], color, width) {
 		const [x0p, y0p] = transform(A, [x0, y0])
 		const [x1p, y1p] = transform(A, [x1, y1])
-		drawLine(x0p, y0p, x1p, y1p, color, width)
+		drawLine([x0p, y0p], [x1p, y1p], color, width)
 	}
 
-	function drawLine(x0, y0, x1, y1, color = "#000", stroke_width = 1) {
+	function drawArrow([x0, y0], [x1, y1], color, width = 5) {
+		drawLine([x0, y0], [x1, y1], color, width)
+
+		const angle = Math.atan2(y1 - y0, x1 - x0)
+		const ANGLE_OFFSET = 0.7
+		const HEAD_LENGTH = 0.15
+
+		ctx.lineWidth = width
+		ctx.strokeStyle = color
+
+		ctx.beginPath()
+		moveTo(
+			x1 - HEAD_LENGTH * Math.cos(angle + ANGLE_OFFSET),
+			y1 - HEAD_LENGTH * Math.sin(angle + ANGLE_OFFSET)
+		)
+		lineTo(x1, y1)
+		lineTo(
+			x1 - HEAD_LENGTH * Math.cos(angle - ANGLE_OFFSET),
+			y1 - HEAD_LENGTH * Math.sin(angle - ANGLE_OFFSET)
+		)
+		ctx.stroke()
+		ctx.closePath()
+	}
+
+	function drawLine([x0, y0], [x1, y1], color = "#000", stroke_width = 1) {
 		ctx.lineWidth = stroke_width
 		ctx.strokeStyle = color
 
@@ -136,26 +181,34 @@
 	function drawEig(evalues, evectors) {
 		ctx.setLineDash([10, 3])
 		drawLine(
-			(-width / spacing) * evectors[0][0],
-			(-width / spacing) * evectors[0][1],
-			(+width / spacing) * evectors[0][0],
-			(+width / spacing) * evectors[0][1],
+			[
+				(-width / spacing) * evectors[0][0],
+				(-width / spacing) * evectors[0][1],
+			],
+			[
+				(+width / spacing) * evectors[0][0],
+				(+width / spacing) * evectors[0][1],
+			],
 			"turquoise",
 			2
 		)
 		drawLine(
-			(-width / spacing) * evectors[1][0],
-			(-width / spacing) * evectors[1][1],
-			(+width / spacing) * evectors[1][0],
-			(+width / spacing) * evectors[1][1],
+			[
+				(-width / spacing) * evectors[1][0],
+				(-width / spacing) * evectors[1][1],
+			],
+			[
+				(+width / spacing) * evectors[1][0],
+				(+width / spacing) * evectors[1][1],
+			],
 			"turquoise",
 			2
 		)
+		ctx.setLineDash([])
 		drawPoint(evectors[0], 3, "turquoise")
 		drawPoint(evectors[1], 3, "turquoise")
-		ctx.setLineDash([])
-		drawPoint(scale(evectors[0], evalues[0]), 5, "turquoise")
-		drawPoint(scale(evectors[1], evalues[1]), 5, "turquoise")
+		drawArrow(evectors[0], scale(evectors[0], evalues[0]), "turquoise", 2)
+		drawArrow(evectors[1], scale(evectors[1], evalues[1]), "turquoise", 2)
 	}
 
 	function moveTo(x, y) {
@@ -181,181 +234,10 @@
 		ctx.closePath()
 	}
 
-	function drawArrow(A, V) {
+	function drawArrowPair(A, V) {
 		const T = transform(A, [V[0], V[1]])
-		drawLine(0, 0, V[0], V[1], "#FFE333", 5)
-		drawLine(0, 0, T[0], T[1], "#F36F63", 5)
-	}
-
-	/* MATH UTILS */
-
-	function clamp(v) {
-		return Math.min(Math.max(v, 0), 1)
-	}
-
-	function ease(time) {
-		return (-Math.cos(Math.PI * time) + 1) / 2
-	}
-
-	function reduce(seq) {
-		return seq.reduce(
-			(A, m) => [
-				[
-					A[0][0] * m[0][0] + A[0][1] * m[1][0],
-					A[0][0] * m[0][1] + A[0][1] * m[1][1],
-				],
-				[
-					A[1][0] * m[0][0] + A[1][1] * m[1][0],
-					A[1][0] * m[0][1] + A[1][1] * m[1][1],
-				],
-			],
-			[
-				[1, 0],
-				[0, 1],
-			]
-		)
-	}
-
-	function scale(v, s) {
-		return v.map((x) => x * s)
-	}
-
-	function transform(A, [x, y]) {
-		return [A[0][0] * x + A[0][1] * y, A[1][0] * x + A[1][1] * y]
-	}
-
-	function interpolateAngle(A, time) {
-		const t1 = time * Math.atan2(A[1][0], A[0][0])
-		const t2 = time * (Math.atan2(A[1][1], A[0][1]) - Math.PI / 2) + Math.PI / 2
-		const s1 = time * (Math.sqrt(A[0][0] * A[0][0] + A[1][0] * A[1][0]) - 1) + 1
-		const s2 = time * (Math.sqrt(A[0][1] * A[0][1] + A[1][1] * A[1][1]) - 1) + 1
-		return [
-			[Math.cos(t1) * s1, Math.cos(t2) * s2],
-			[Math.sin(t1) * s1, Math.sin(t2) * s2],
-		]
-	}
-
-	function interpolateEigen(A, time) {
-		const [evalues, evectors] = eigen(A)
-		const Vec = [
-			[evectors[0][0], evectors[1][0]],
-			[evectors[0][1], evectors[1][1]],
-		]
-		const L1 = [
-			[time * (evalues[0] - 1) + 1, 0],
-			[0, time * (evalues[1] - 1) + 1],
-		]
-		return reduce([Vec, L1, inverse(Vec)])
-	}
-
-	function eigen(A) {
-		const v = A[0][0] + A[1][1]
-		const evalues = [
-			(v + Math.sqrt(v * v - 4 * (A[0][0] * A[1][1] - A[0][1] * A[1][0]))) / 2,
-			(v - Math.sqrt(v * v - 4 * (A[0][0] * A[1][1] - A[0][1] * A[1][0]))) / 2,
-		]
-
-		const evectors = [
-			normalize(
-				nullv([
-					[A[0][0] - evalues[0], A[0][1]],
-					[A[1][0], A[1][1] - evalues[0]],
-				])
-			),
-			normalize(
-				nullv_2([
-					[A[0][0] - evalues[1], A[0][1]],
-					[A[1][0], A[1][1] - evalues[1]],
-				])
-			),
-		]
-
-		return [evalues, evectors]
-	}
-
-	function inverse(A) {
-		const scale = 1 / (A[0][0] * A[1][1] - A[0][1] * A[1][0])
-		return [
-			[A[1][1] * scale, -A[0][1] * scale],
-			[-A[1][0] * scale, A[0][0] * scale],
-		]
-	}
-
-	function transpose(A) {
-		return [
-			[A[0][0], A[1][0]],
-			[A[0][1], A[1][1]],
-		]
-	}
-
-	function nullv(A) {
-		// preferrentially assume x1 = 1
-		if (A[1][1] != 0) return [1, -A[1][0] / A[1][1]]
-		if (A[0][1] != 0) return [1, -A[0][0] / A[0][1]]
-		if (A[0][0] != 0) return [-A[0][1] / A[0][0], 1]
-		if (A[1][0] != 0) return [-A[1][1] / A[1][0], 1]
-	}
-
-	function nullv_2(A) {
-		// preferrentially assume x2 = 1
-		if (A[0][0] != 0) return [-A[0][1] / A[0][0], 1]
-		if (A[1][0] != 0) return [-A[1][1] / A[1][0], 1]
-		if (A[1][1] != 0) return [1, -A[1][0] / A[1][1]]
-		if (A[0][1] != 0) return [1, -A[0][0] / A[0][1]]
-	}
-
-	function normalize(v) {
-		const m = Math.sqrt(v[0] * v[0] + v[1] * v[1])
-		return [v[0] / m, v[1] / m]
-	}
-
-	function round(x) {
-		return Math.floor(x * 100) / 100
-	}
-
-	function dist([x0, y0], [x1, y1]) {
-		return Math.sqrt((x0 - x1) * (x0 - x1) + (y0 - y1) * (y0 - y1))
-	}
-
-	function eigenDecomposition(A) {
-		const [evalues, evectors] = eigen(A)
-		const Vec = [
-			[evectors[0][0], evectors[1][0]],
-			[evectors[0][1], evectors[1][1]],
-		]
-		const L = [
-			[evalues[0], 0],
-			[0, evalues[1]],
-		]
-		return [Vec, L, inverse(Vec)]
-	}
-
-	function eigenAxisDecomposition(A) {
-		const [evalues, evectors] = eigen(A)
-		const Vec = transpose(evectors)
-		const L1 = [
-			[evalues[0], 0],
-			[0, 1],
-		]
-		const L2 = [
-			[1, 0],
-			[0, evalues[1]],
-		]
-		return [reduce([Vec, L1, inverse(Vec)]), reduce([Vec, L2, inverse(Vec)])]
-	}
-
-	function singularValueDecomposition(A) {
-		const [uvalues, uvectors] = eigen(reduce([A, transpose(A)]))
-		const [vvalues, vvectors] = eigen(reduce([transpose(A), A]))
-
-		const U = transpose(uvectors)
-		const V = vvectors
-		const S = [
-			[Math.sqrt(uvalues[0]), 0],
-			[0, Math.sqrt(uvalues[1])],
-		]
-
-		return [U, S, V]
+		drawArrow([0, 0], V, "#FFE333", 2)
+		drawArrow([0, 0], T, "#F36F63", 2)
 	}
 
 	/* HANDLERS */
@@ -414,36 +296,7 @@
 			<div class="label">OPTIONS</div>
 			<div class="eq">
 				<div class="eq-var">A =</div>
-				<div class="matrix">
-					<div>
-						<input
-							type="number"
-							step="0.01"
-							value={round(A[0][0])}
-							on:change={(e) => (A[0][0] = e.target.value)}
-						/>
-						<input
-							type="number"
-							step="0.01"
-							value={round(A[0][1])}
-							on:change={(e) => (A[0][1] = e.target.value)}
-						/>
-					</div>
-					<div>
-						<input
-							type="number"
-							step="0.01"
-							value={round(A[1][0])}
-							on:change={(e) => (A[1][0] = e.target.value)}
-						/>
-						<input
-							type="number"
-							step="0.01"
-							value={round(A[1][1])}
-							on:change={(e) => (A[1][1] = e.target.value)}
-						/>
-					</div>
-				</div>
+				<Matrix bind:matrix={A} />
 			</div>
 		</div>
 
@@ -462,35 +315,26 @@
 			{#if options.draw}
 				<div class="eq" style="color: #FFE333">
 					<div class="eq-var">V =</div>
-					<div class="matrix">
-						<div>
-							<input type="number" bind:value={V[0]} />
-						</div>
-						<div>
-							<input type="number" bind:value={V[1]} />
-						</div>
-					</div>
+					<Matrix bind:matrix={V} />
 				</div>
 				<div class="eq" style="color: #F36F63">
 					<div class="eq-var">AV =</div>
-					<div class="matrix">
-						<div>
-							<input
-								type="number"
-								readonly
-								value={round(transform(A, [V[0], V[1]])[0])}
-							/>
-						</div>
-						<div>
-							<input
-								type="number"
-								readonly
-								value={round(transform(A, [V[0], V[1]])[1])}
-							/>
-						</div>
-					</div>
+					<Matrix matrix={transform(A, V)} readonly />
 				</div>
 			{/if}
+		</div>
+
+		<div class="block">
+			<div class="header">
+				<label>
+					<input
+						type="checkbox"
+						id="eigen"
+						name="eigen"
+						bind:checked={options.transpose}
+					/> Show transpose
+				</label>
+			</div>
 		</div>
 
 		<div class="block">
@@ -512,14 +356,7 @@
 				</div>
 				<div class="eq">
 					<div class="eq-var">V1 =</div>
-					<div class="matrix">
-						<div>
-							<input type="number" readonly value={round(evectors[0][0])} />
-						</div>
-						<div>
-							<input type="number" readonly value={round(evectors[0][1])} />
-						</div>
-					</div>
+					<Matrix matrix={evectors[0]} readonly />
 				</div>
 				<div class="eq">
 					<div class="eq-var">L2 =</div>
@@ -527,14 +364,7 @@
 				</div>
 				<div class="eq">
 					<div class="eq-var">V2 =</div>
-					<div class="matrix">
-						<div>
-							<input type="number" readonly value={round(evectors[1][0])} />
-						</div>
-						<div>
-							<input type="number" readonly value={round(evectors[1][1])} />
-						</div>
-					</div>
+					<Matrix matrix={evectors[1]} readonly />
 				</div>
 			{/if}
 		</div>
@@ -556,25 +386,61 @@
 				/>
 			</div>
 			<div class="marks">
+				{#if options.decomp == undefined}
+					<div class="mark">
+						<span>A =</span>
+						<Matrix matrix={A} readonly />
+					</div>
+				{/if}
 				{#if options.decomp == "EIGEN"}
-					<div class="mark">V</div>
-					<div class="mark">Λ</div>
-					<div class="mark">V<sup>-1</sup></div>
+					<div class="mark">
+						<span>V =</span>
+						<Matrix matrix={eigenDecomposition(A)[0]} readonly />
+					</div>
+					<div class="mark">
+						<span>Λ =</span>
+						<Matrix matrix={eigenDecomposition(A)[1]} readonly />
+					</div>
+					<div class="mark">
+						<span>V<sup>-1</sup> =</span>
+						<Matrix matrix={eigenDecomposition(A)[2]} readonly />
+					</div>
 				{/if}
 				{#if options.decomp == "EIGEN_AXIS"}
-					<div class="mark">V<sub>1</sub></div>
-					<div class="mark">V<sub>2</sub></div>
+					<div class="mark">
+						<span>V<sub>1</sub> =</span>
+						<Matrix matrix={eigenAxisDecomposition(A)[0]} readonly />
+					</div>
+					<div class="mark">
+						<span>V<sub>2</sub> =</span>
+						<Matrix matrix={eigenAxisDecomposition(A)[1]} readonly />
+					</div>
+				{/if}
+				{#if options.decomp == "UPPER"}
 				{/if}
 				{#if options.decomp == "SINGULAR"}
-					<div class="mark">U</div>
-					<div class="mark">S</div>
-					<div class="mark">V<sup>T</sup></div>
+					<div class="mark">
+						<span>U =</span>
+						<Matrix matrix={singularValueDecomposition(A)[0]} readonly />
+					</div>
+					<div class="mark">
+						<span>S =</span>
+						<Matrix matrix={singularValueDecomposition(A)[1]} readonly />
+					</div>
+					<div class="mark">
+						<span>V<sup>T</sup> =</span>
+						<Matrix matrix={singularValueDecomposition(A)[2]} readonly />
+					</div>
 				{/if}
 			</div>
+		</div>
+		<div class="block">
+			<div class="label">DECOMPOSITION</div>
 			<select bind:value={options.decomp}>
 				<option value={undefined}> No decomposition </option>
 				<option value={"EIGEN"}> Eigendecomposition (diagonalization) </option>
 				<option value={"EIGEN_AXIS"}> Eigenvector Axis decomposition </option>
+				<option value={"UPPER"}> Upper Triangular decomposition </option>
 				<option value={"SINGULAR"}> Singular Value decomposition </option>
 			</select>
 		</div>
@@ -598,37 +464,6 @@
 		font-weight: bold;
 		font-size: 0.75em;
 		margin-bottom: 8px;
-	}
-
-	.matrix {
-		position: relative;
-		padding: 0.5em;
-	}
-
-	.matrix::before {
-		position: absolute;
-		box-sizing: border-box;
-		left: 0;
-		top: 0;
-		height: calc(100%);
-		width: 10px;
-		content: " ";
-		border-left: 2px solid currentColor;
-		border-top: 2px solid currentColor;
-		border-bottom: 2px solid currentColor;
-	}
-
-	.matrix::after {
-		position: absolute;
-		box-sizing: border-box;
-		right: 0;
-		top: 0;
-		content: " ";
-		height: calc(100% - 5px);
-		width: 10px;
-		border-right: 2px solid currentColor;
-		border-top: 2px solid currentColor;
-		border-bottom: 2px solid currentColor;
 	}
 
 	.block {
@@ -662,7 +497,7 @@
 	.animation-options {
 		position: absolute;
 		bottom: 1em;
-		width: 400px;
+		width: 450px;
 		left: 50%;
 		margin-left: -200px;
 	}
@@ -676,13 +511,13 @@
 		color: white;
 	}
 
-	input[type="number"]::-webkit-outer-spin-button,
-	input[type="number"]::-webkit-inner-spin-button {
+	:global(input[type="number"]::-webkit-outer-spin-button),
+	:global(input[type="number"]::-webkit-inner-spin-button) {
 		-webkit-appearance: none;
 		margin: 0;
 	}
 
-	input[type="number"] {
+	:global(input[type="number"]) {
 		font: inherit;
 		-moz-appearance: textfield;
 		appearance: none;
@@ -697,11 +532,15 @@
 	input[type="range"] {
 		direction: rtl;
 		width: 100%;
+		box-sizing: border-box;
+		margin: 0;
 	}
 
 	select {
 		color: white;
+		font-size: 1.1em;
 		border: 2px solid #333;
+		padding: 0.125rem;
 		background-color: #111;
 		width: 100%;
 	}
@@ -713,14 +552,34 @@
 	.marks {
 		font-family: "Garamond", serif;
 		display: flex;
-		margin-bottom: 1em;
+		margin-top: 1em;
 	}
 
 	.mark {
-		border-top: 2px solid #333;
-		border-left: 2px solid #333;
-		margin-right: 5px;
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.25rem;
 		flex: 1;
-		padding-left: 0.25em;
+	}
+
+	.mark + .mark {
+		margin-left: 0.5rem;
+	}
+
+	.mark::before{
+		position: absolute;
+		top: -16px;
+		left:0;
+		right: 0;
+		content: " ";
+		height: 8px;
+		border-radius: 0 0 8px 8px;
+		border-bottom: 3px solid white;
+	}
+
+	.mark > span {
+		margin-right: 0.25em;
 	}
 </style>
