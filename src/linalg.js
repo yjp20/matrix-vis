@@ -25,6 +25,10 @@ export function reduce(seq) {
 	)
 }
 
+export function dot([x1, x2], [y1, y2]) {
+	return x1 * y1 + x2 * y2
+}
+
 export function scale(v, s) {
 	return v.map((x) => x * s)
 }
@@ -90,7 +94,7 @@ export function nullv_2(A) {
 }
 
 export function normalize(v) {
-	const m = Math.sqrt(v[0] * v[0] + v[1] * v[1])
+	const m = Math.sqrt(dot(v, v))
 	return [v[0] / m, v[1] / m]
 }
 
@@ -143,8 +147,17 @@ export function singularValueDecomposition(A) {
 	return [U, S, V]
 }
 
-export function upperTriangularDecomposition(A) {
-
+export function schurDecomposition(A) {
+	const [evalues, evectors] = eigen(A)
+	const proj = dot(evectors[0], [0, 1])
+	const q = transpose([
+		evectors[0],
+		normalize([
+			0 - evectors[0][0] * proj,
+			1 - evectors[0][1] * proj,
+		]),
+	])
+	return [q, reduce([transpose(q),A,q]), transpose(q)]
 }
 
 export function interpolateAngle(A, time) {

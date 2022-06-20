@@ -14,13 +14,13 @@
 		eigenDecomposition,
 		eigenAxisDecomposition,
 		singularValueDecomposition,
-		upperTriangularDecomposition,
+		schurDecomposition,
 		interpolateAngle,
 		interpolateEigen,
 	} from "./linalg.js"
 
 	let A = [
-		[1, 0.4],
+		[1, 0.6],
 		[0.3, 1],
 	]
 	let V = [1, 0]
@@ -48,8 +48,9 @@
 			decomp = eigenDecomposition(A)
 			square = evectors
 		}
-		if (options.decomp == "UPPER") {
-			decomp = upperTriangularDecomposition(A)
+		if (options.decomp == "SCHUR") {
+			decomp = schurDecomposition(A)
+			square = evectors
 		}
 		if (options.decomp == "EIGEN_AXIS") {
 			decomp = eigenAxisDecomposition(A)
@@ -416,7 +417,19 @@
 						<Matrix matrix={eigenAxisDecomposition(A)[1]} readonly />
 					</div>
 				{/if}
-				{#if options.decomp == "UPPER"}
+				{#if options.decomp == "SCHUR"}
+					<div class="mark">
+						<span>U =</span>
+						<Matrix matrix={schurDecomposition(A)[0]} readonly />
+					</div>
+					<div class="mark">
+						<span>T =</span>
+						<Matrix matrix={schurDecomposition(A)[1]} readonly />
+					</div>
+					<div class="mark">
+						<span>U<sup>T</sup> =</span>
+						<Matrix matrix={schurDecomposition(A)[2]} readonly />
+					</div>
 				{/if}
 				{#if options.decomp == "SINGULAR"}
 					<div class="mark">
@@ -440,7 +453,7 @@
 				<option value={undefined}> No decomposition </option>
 				<option value={"EIGEN"}> Eigendecomposition (diagonalization) </option>
 				<option value={"EIGEN_AXIS"}> Eigenvector Axis decomposition </option>
-				<option value={"UPPER"}> Upper Triangular decomposition </option>
+				<option value={"SCHUR"}> Schur decomposition </option>
 				<option value={"SINGULAR"}> Singular Value decomposition </option>
 			</select>
 		</div>
