@@ -143,6 +143,10 @@ export function singularValueDecomposition(A) {
 	return [U, S, V]
 }
 
+export function upperTriangularDecomposition(A) {
+
+}
+
 export function interpolateAngle(A, time) {
 	const t1 = time * Math.atan2(A[1][0], A[0][0])
 	const t2 = time * (Math.atan2(A[1][1], A[0][1]) - Math.PI / 2) + Math.PI / 2
