@@ -1,32 +1,41 @@
 <script>
-	import { round } from "./linalg.js"
+	import { typeOf, round } from "mathjs"
 	export let matrix
 	export let readonly = false
+
+	$: array = matrix.valueOf()
 </script>
 
 <div class="matrix">
-	{#if Array.isArray(matrix[0])}
-		{#each matrix as row, i}
+	{#if Array.isArray(array[0])}
+		{#each array as row, i}
 			<div>
 				{#each row as cell, j}
 					<input
-						type="number"
+						type={typeOf(cell) == "Complex" ? "text" : "number"}
 						step="0.01"
-						value={round(cell)}
-						on:change={(e) => (matrix[i][j] = Number(e.target.value))}
+						value={round(cell, 2)}
+						on:change={(e) => {
+							console.log(i, j)
+							matrix.set([j, i], Number(e.target.value))
+							matrix = matrix
+						}}
 						{readonly}
 					/>
 				{/each}
 			</div>
 		{/each}
 	{:else}
-		{#each matrix as cell, i}
+		{#each array as cell, i}
 			<div>
 				<input
 					type="number"
 					step="0.01"
-					value={round(cell)}
-					on:change={(e) => (matrix[i] = Number(e.target.value))}
+					value={typeOf(cell) == "Complex" ? cell : round(cell, 2)}
+					on:change={(e) => {
+						matrix.set([i], Number(e.target.value))
+						matrix = matrix
+					}}
 					{readonly}
 				/>
 			</div>

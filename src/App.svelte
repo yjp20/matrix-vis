@@ -4,13 +4,7 @@
 	import {
 		clamp,
 		ease,
-		reduce,
-		scale,
-		transform,
-		eigen,
-		transpose,
-		round,
-		dist,
+		eigs,
 		eigenDecomposition,
 		eigenAxisDecomposition,
 		singularValueDecomposition,
@@ -18,19 +12,22 @@
 		interpolateAngle,
 		interpolateEigen,
 	} from "./linalg.js"
+	import * as m from "mathjs"
 
-	let A = [
+	let A = m.matrix([
 		[1, 0.6],
 		[0.3, 1],
-	]
-	let V = [1, 0]
+	])
+	let V = m.matrix([1, 0])
 
-	let select = null
-	let time = 1
-	let canvas, ctx
-	let width = window.innerWidth,
+	let canvas,
+		ctx,
+		select = null,
+		time = 1,
+		width = window.innerWidth,
 		height = window.innerHeight,
-		spacing = 60
+		spacing = 60,
+		err = null
 
 	let options = {
 		eigen: false,
@@ -40,34 +37,42 @@
 	}
 
 	function frame() {
-		const [evalues, evectors] = eigen(A)
-		let decomp = [A],
-			interpolate = interpolateAngle,
-			square = undefined
-		if (options.decomp == "EIGEN") {
-			decomp = eigenDecomposition(A)
-			square = evectors
+		try {
+			let decomp = [A],
+				interpolate = interpolateAngle,
+				square = undefined
+			if (options.decomp == "EIGEN") {
+				decomp = eigenDecomposition(A)
+				square = evectors
+			}
+			if (options.decomp == "SCHUR") {
+				decomp = schurDecomposition(A)
+				square = evectors
+			}
+			if (options.decomp == "EIGEN_AXIS") {
+				decomp = eigenAxisDecomposition(A)
+				interpolate = interpolateEigen
+				square = evectors
+			}
+			if (options.decomp == "SINGULAR") {
+				decomp = singularValueDecomposition(A)
+				square = m.transpose(decomp[2])
+			}
+			const transform = m.multiply(
+				m.identity(2),
+				...decomp.map((mat, idx) => {
+					const t = clamp(decomp.length * time - decomp.length + idx + 1)
+					return interpolate(mat, ease(t))
+				})
+			)
+			draw(transform, V, evalues, evectors, square)
+			if (err != null) {
+				err = null
+			}
+		} catch (e) {
+			err = "Cannot animate this transformation"
+			draw(A, V, evalues, evectors, undefined)
 		}
-		if (options.decomp == "SCHUR") {
-			decomp = schurDecomposition(A)
-			square = evectors
-		}
-		if (options.decomp == "EIGEN_AXIS") {
-			decomp = eigenAxisDecomposition(A)
-			interpolate = interpolateEigen
-			square = evectors
-		}
-		if (options.decomp == "SINGULAR") {
-			decomp = singularValueDecomposition(A)
-			square = decomp[2]
-		}
-		const transform = reduce(
-			decomp.map((mat, idx) => {
-				const t = clamp(decomp.length * time - decomp.length + idx + 1)
-				return interpolate(mat, ease(t))
-			})
-		)
-		draw(transform, V, evalues, evectors, square)
 		requestAnimationFrame(frame)
 	}
 
@@ -82,16 +87,12 @@
 		drawBasis(A)
 		if (square !== undefined) drawSquare(A, square)
 		if (options.eigen) drawEig(evalues, evectors)
-		if (options.transpose) drawTransformGrid(transpose(A), "red")
+		if (options.transpose) drawTransformGrid(m.transpose(A), "red")
 		if (options.draw) drawArrowPair(A, V)
 	}
 
 	function drawGrid() {
-		for (
-			let i = Math.floor(-width / spacing);
-			i <= Math.ceil(width / spacing);
-			i++
-		) {
+		for (let i = Math.floor(-width / spacing); i <= Math.ceil(width / spacing); i++) {
 			const nx = Math.ceil(width / spacing)
 			const lineColor = "#333"
 			const lineWidth = i == 0 ? "2" : "1"
@@ -106,11 +107,7 @@
 	}
 
 	function drawTransformGrid(A, color = "#09d") {
-		for (
-			let i = Math.floor(-width / spacing);
-			i <= Math.ceil(width / spacing);
-			i++
-		) {
+		for (let i = Math.floor(-width / spacing); i <= Math.ceil(width / spacing); i++) {
 			const nx = Math.ceil(width / spacing)
 			const lineColor = i == 0 ? "#fff" : color
 			const lineWidth = i == 0 ? "2" : "1"
@@ -120,33 +117,31 @@
 	}
 
 	function drawLineTransform(A, [x0, y0], [x1, y1], color, width) {
-		const [x0p, y0p] = transform(A, [x0, y0])
-		const [x1p, y1p] = transform(A, [x1, y1])
-		drawLine([x0p, y0p], [x1p, y1p], color, width)
+		const l1 = m.multiply(A, m.matrix([[x0], [y0]]))
+		const l2 = m.multiply(A, m.matrix([[x1], [y1]]))
+		drawLine(l1.valueOf(), l2.valueOf(), color, width)
 	}
 
-	function drawArrow([x0, y0], [x1, y1], color, width = 5) {
-		drawLine([x0, y0], [x1, y1], color, width)
+	function drawArrowTransform(A, [x0, y0], [x1, y1], color, width = 5) {
+		const l1 = m.multiply(A, m.matrix([[x0], [y0]])).valueOf()
+		const l2 = m.multiply(A, m.matrix([[x1], [y1]])).valueOf()
+		drawLine(l1, l2, color, width)
+		const [dx, dy] = m.subtract(l2, l1).valueOf()
+		if (dx != 0 || dy != 0) {
+			const angle = Math.atan2(dy, dx)
+			const ANGLE_OFFSET = 0.7
+			const HEAD_LENGTH = 0.15
 
-		const angle = Math.atan2(y1 - y0, x1 - x0)
-		const ANGLE_OFFSET = 0.7
-		const HEAD_LENGTH = 0.15
+			ctx.lineWidth = width
+			ctx.strokeStyle = color
 
-		ctx.lineWidth = width
-		ctx.strokeStyle = color
-
-		ctx.beginPath()
-		moveTo(
-			x1 - HEAD_LENGTH * Math.cos(angle + ANGLE_OFFSET),
-			y1 - HEAD_LENGTH * Math.sin(angle + ANGLE_OFFSET)
-		)
-		lineTo(x1, y1)
-		lineTo(
-			x1 - HEAD_LENGTH * Math.cos(angle - ANGLE_OFFSET),
-			y1 - HEAD_LENGTH * Math.sin(angle - ANGLE_OFFSET)
-		)
-		ctx.stroke()
-		ctx.closePath()
+			ctx.beginPath()
+			moveTo(l2[0] - HEAD_LENGTH * Math.cos(angle + ANGLE_OFFSET), l2[1] - HEAD_LENGTH * Math.sin(angle + ANGLE_OFFSET))
+			lineTo(...l2)
+			lineTo(l2[0] - HEAD_LENGTH * Math.cos(angle - ANGLE_OFFSET), l2[1] - HEAD_LENGTH * Math.sin(angle - ANGLE_OFFSET))
+			ctx.stroke()
+			ctx.closePath()
+		}
 	}
 
 	function drawLine([x0, y0], [x1, y1], color = "#000", stroke_width = 1) {
@@ -163,53 +158,31 @@
 	function drawPoint([x, y], radius, color = "white") {
 		ctx.fillStyle = color
 		ctx.beginPath()
-		ctx.arc(
-			x * spacing + width / 2,
-			-y * spacing + height / 2,
-			radius,
-			0,
-			2 * Math.PI
-		)
+		ctx.arc(x * spacing + width / 2, -y * spacing + height / 2, radius, 0, 2 * Math.PI)
 		ctx.fill()
 		ctx.closePath()
 	}
 
-	function drawPointTransform(A, [x, y], color = "white") {
-		const [xt, yt] = transform(A, [x, y])
-		drawPoint([xt, yt], 5, color)
+	function drawPointTransform(A, [x, y], radius = 5, color = "white") {
+		drawPoint(m.multiply(A, [x, y]).valueOf(), radius, color)
 	}
 
 	function drawEig(evalues, evectors) {
+		evalues = evalues.valueOf()
+		evectors = evectors.valueOf()
 		ctx.setLineDash([10, 3])
-		drawLine(
-			[
-				(-width / spacing) * evectors[0][0],
-				(-width / spacing) * evectors[0][1],
-			],
-			[
-				(+width / spacing) * evectors[0][0],
-				(+width / spacing) * evectors[0][1],
-			],
-			"turquoise",
-			2
-		)
-		drawLine(
-			[
-				(-width / spacing) * evectors[1][0],
-				(-width / spacing) * evectors[1][1],
-			],
-			[
-				(+width / spacing) * evectors[1][0],
-				(+width / spacing) * evectors[1][1],
-			],
-			"turquoise",
-			2
-		)
+		const transform = m.matrix(evectors)
+		drawLineTransform(transform, [-1e4, 0], [1e4, 0], "turquoise", 2)
+		drawLineTransform(transform, [0, -1e4], [0, 1e4], "turquoise", 2)
 		ctx.setLineDash([])
-		drawPoint(evectors[0], 3, "turquoise")
-		drawPoint(evectors[1], 3, "turquoise")
-		drawArrow(evectors[0], scale(evectors[0], evalues[0]), "turquoise", 2)
-		drawArrow(evectors[1], scale(evectors[1], evalues[1]), "turquoise", 2)
+		drawPointTransform(transform, [0, 1], 3, "turquoise")
+		drawPointTransform(transform, [1, 0], 3, "turquoise")
+		drawPointTransform(transform, [0, -1], 3, "turquoise")
+		drawPointTransform(transform, [-1, 0], 3, "turquoise")
+		drawArrowTransform(transform, [0, 1], [0, evalues[1]], "turquoise", 2)
+		drawArrowTransform(transform, [1, 0], [evalues[0], 0], "turquoise", 2)
+		drawArrowTransform(transform, [0, -1], [0, -evalues[1]], "turquoise", 2)
+		drawArrowTransform(transform, [-1, 0], [-evalues[0], 0], "turquoise", 2)
 	}
 
 	function moveTo(x, y) {
@@ -221,8 +194,7 @@
 	}
 
 	function drawSquare(A, vectors) {
-		const [a, b] = transform(A, vectors[0])
-		const [c, d] = transform(A, vectors[1])
+		const [[a, c], [b, d]] = m.multiply(A, vectors).valueOf()
 
 		ctx.fillStyle = "#0099dd83"
 		ctx.beginPath()
@@ -233,12 +205,41 @@
 		lineTo(0, 0)
 		ctx.fill()
 		ctx.closePath()
+
+		ctx.fillStyle = "#dd990083"
+		ctx.beginPath()
+		moveTo(0, 0)
+		lineTo(a, b)
+		lineTo(a - c, b - d)
+		lineTo(-c, -d)
+		lineTo(0, 0)
+		ctx.fill()
+		ctx.closePath()
+
+		ctx.fillStyle = "#00dd9983"
+		ctx.beginPath()
+		moveTo(0, 0)
+		lineTo(-a, -b)
+		lineTo(-a - c, -b - d)
+		lineTo(-c, -d)
+		lineTo(0, 0)
+		ctx.fill()
+		ctx.closePath()
+
+		ctx.fillStyle = "#9900dd83"
+		ctx.beginPath()
+		moveTo(0, 0)
+		lineTo(-a, -b)
+		lineTo(-a + c, -b + d)
+		lineTo(c, d)
+		lineTo(0, 0)
+		ctx.fill()
+		ctx.closePath()
 	}
 
 	function drawArrowPair(A, V) {
-		const T = transform(A, [V[0], V[1]])
-		drawArrow([0, 0], V, "#FFE333", 2)
-		drawArrow([0, 0], T, "#F36F63", 2)
+		drawArrowTransform(m.identity(2), [0, 0], V.valueOf(), "#FFE333", 2)
+		drawArrowTransform(A, [0, 0], V.valueOf(), "#F36F63", 2)
 	}
 
 	/* HANDLERS */
@@ -252,29 +253,30 @@
 	function onMouseDown(e) {
 		const [x, y] = getMousePos(e)
 		select = "ARROW"
-		if (dist([x, y], transform(A, [1, 0])) <= 0.3) {
+		if (m.distance([x, y], m.multiply(A, [1, 0])) <= 0.3) {
 			select = "X"
 		}
-		if (dist([x, y], transform(A, [0, 1])) <= 0.3) {
+		if (m.distance([x, y], m.multiply(A, [0, 1])) <= 0.3) {
 			select = "Y"
 		}
 	}
 
-	function onMouseUp(e) {
+	function onMouseUp() {
 		select = null
 	}
 
 	function onMouseMove(e) {
 		const [x, y] = getMousePos(e)
 		if (select == "ARROW") {
-			V[0] = x
-			V[1] = y
+			V = m.matrix([x, y])
 		} else if (select == "X") {
-			A[0][0] = x
-			A[1][0] = y
+			A.set([0, 0], x)
+			A.set([1, 0], y)
+			A = A
 		} else if (select == "Y") {
-			A[0][1] = x
-			A[1][1] = y
+			A.set([0, 1], x)
+			A.set([1, 1], y)
+			A = A
 		}
 	}
 
@@ -286,7 +288,7 @@
 		frame()
 	})
 
-	$: [evalues, evectors] = eigen(A)
+	$: ({ values: evalues, vectors: evectors } = eigs(A))
 </script>
 
 <svelte:window bind:innerHeight={height} bind:innerWidth={width} />
@@ -304,12 +306,7 @@
 		<div class="block">
 			<div class="header">
 				<label>
-					<input
-						type="checkbox"
-						id="draw"
-						name="draw"
-						bind:checked={options.draw}
-					/> Show arrows
+					<input type="checkbox" id="draw" name="draw" bind:checked={options.draw} /> Show arrows
 				</label>
 			</div>
 
@@ -320,7 +317,7 @@
 				</div>
 				<div class="eq" style="color: #F36F63">
 					<div class="eq-var">AV =</div>
-					<Matrix matrix={transform(A, V)} readonly />
+					<Matrix matrix={m.multiply(A, V)} readonly />
 				</div>
 			{/if}
 		</div>
@@ -328,12 +325,7 @@
 		<div class="block">
 			<div class="header">
 				<label>
-					<input
-						type="checkbox"
-						id="eigen"
-						name="eigen"
-						bind:checked={options.transpose}
-					/> Show transpose
+					<input type="checkbox" id="eigen" name="eigen" bind:checked={options.transpose} /> Show transpose
 				</label>
 			</div>
 		</div>
@@ -341,31 +333,26 @@
 		<div class="block">
 			<div class="header">
 				<label>
-					<input
-						type="checkbox"
-						id="eigen"
-						name="eigen"
-						bind:checked={options.eigen}
-					/> Show eigen
+					<input type="checkbox" id="eigen" name="eigen" bind:checked={options.eigen} /> Show eigen
 				</label>
 			</div>
 
 			{#if options.eigen}
 				<div class="eq">
 					<div class="eq-var">L1 =</div>
-					<div>{round(evalues[0])}</div>
+					<div>{m.round(evalues.get([0]), 2)}</div>
 				</div>
 				<div class="eq">
 					<div class="eq-var">V1 =</div>
-					<Matrix matrix={evectors[0]} readonly />
+					<Matrix matrix={m.column(evectors, 0)} readonly />
 				</div>
 				<div class="eq">
 					<div class="eq-var">L2 =</div>
-					<div>{round(evalues[1])}</div>
+					<div>{m.round(evalues.get([1]), 2)}</div>
 				</div>
 				<div class="eq">
 					<div class="eq-var">V2 =</div>
-					<Matrix matrix={evectors[1]} readonly />
+					<Matrix matrix={m.column(evectors, 1)} readonly />
 				</div>
 			{/if}
 		</div>
@@ -374,17 +361,11 @@
 	<div class="animation-options">
 		<div class="block">
 			<div class="label">ANIMATION</div>
+			{#if err != null}
+				<div class="error">{err}</div>
+			{/if}
 			<div class="slidecontainer">
-				<input
-					type="range"
-					min="0"
-					max="1"
-					step="0.01"
-					bind:value={time}
-					class="slider"
-					id="myRange"
-					list="steplist"
-				/>
+				<input type="range" min="0" max="1" step="0.01" bind:value={time} class="slider" id="myRange" list="steplist" />
 			</div>
 			<div class="marks">
 				{#if options.decomp == undefined}
@@ -451,8 +432,8 @@
 			<div class="label">DECOMPOSITION</div>
 			<select bind:value={options.decomp}>
 				<option value={undefined}> No decomposition </option>
-				<option value={"EIGEN"}> Eigendecomposition (diagonalization) </option>
 				<option value={"EIGEN_AXIS"}> Eigenvector Axis decomposition </option>
+				<option value={"EIGEN"}> Eigendecomposition (diagonalization) </option>
 				<option value={"SCHUR"}> Schur decomposition </option>
 				<option value={"SINGULAR"}> Singular Value decomposition </option>
 			</select>
@@ -471,6 +452,14 @@
 
 	.matrix-vis {
 		display: flex;
+	}
+
+	.error {
+		background-color: darkred;
+		color: white;
+		padding: 0.25em;
+		border-radius: 5px;
+		margin-bottom: 0.25em;
 	}
 
 	.label {
@@ -510,7 +499,7 @@
 	.animation-options {
 		position: absolute;
 		bottom: 1em;
-		width: 450px;
+		width: 500px;
 		left: 50%;
 		margin-left: -200px;
 	}
@@ -530,16 +519,21 @@
 		margin: 0;
 	}
 
+	:global(input[type="text"]),
 	:global(input[type="number"]) {
 		font: inherit;
-		-moz-appearance: textfield;
 		appearance: none;
+		-moz-appearance: textfield;
 		width: 4ch;
 		border: 0;
 		background: none;
 		color: inherit;
 		text-align: center;
 		padding: 0;
+	}
+
+	:global(input[type="text"]) {
+		width: 10ch;
 	}
 
 	input[type="range"] {
@@ -581,10 +575,10 @@
 		margin-left: 0.5rem;
 	}
 
-	.mark::before{
+	.mark::before {
 		position: absolute;
 		top: -16px;
-		left:0;
+		left: 0;
 		right: 0;
 		content: " ";
 		height: 8px;
