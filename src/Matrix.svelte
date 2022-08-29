@@ -16,8 +16,7 @@
 						step="0.01"
 						value={round(cell, 2)}
 						on:change={(e) => {
-							console.log(i, j)
-							matrix.set([j, i], Number(e.target.value))
+							matrix.set([i, j], Number(e.target.value))
 							matrix = matrix
 						}}
 						{readonly}
